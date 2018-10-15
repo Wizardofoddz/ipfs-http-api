@@ -2,56 +2,80 @@ package dag
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
 func TestGet(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/dag/get?arg=foo-addr", `"foo"`)
+	expected := `"foo"`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(expected))
+	}))
+	defer ts.Close()
 
-	reader, err := Get(server.URL(), "foo-addr")
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on Cat()", err.Error())
-	}
-	defer reader.Close()
-
-	message := json.RawMessage{}
-	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(&message)
-	if err != nil {
-		t.Fatal("Error on decoder.Decode()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	if string(message) != `"foo"` {
-		t.Fatalf(`Expected body == '"foo"', Actual body == '%s'`, string(message))
+	r, err := Get(u, "foo-addr")
+	if err != nil {
+		t.Fatalf("error on Cat(): %s", err)
+	}
+	defer r.Close()
+
+	var message json.RawMessage
+	if err := json.NewDecoder(r).Decode(&message); err != nil {
+		t.Fatalf("error on decoder.Decode(): %s", err)
+	}
+
+	if got := string(message); got != expected {
+		t.Fatalf("Expected body == %q, Actual body == %q", expected, got)
 	}
 }
 
 func TestGetBytes(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/dag/get?arg=foo-addr", `"foo"`)
+	expected := `"foo"`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(expected))
+	}))
+	defer ts.Close()
 
-	message, err := GetBytes(server.URL(), "foo-addr")
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on Cat()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	if string(message) != `"foo"` {
-		t.Fatalf(`Expected body == '"foo"', Actual body == '%s'`, string(message))
+	message, err := GetBytes(u, "foo-addr")
+	if err != nil {
+		t.Fatalf("error on GetBytes(): %s", err)
+	}
+
+	if got := string(message); got != expected {
+		t.Fatalf("Expected body == %q, Actual body == %q", expected, got)
 	}
 }
 
 func TestGetInterface(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/dag/get?arg=foo-addr", `"foo"`)
+	expected := "foo"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer ts.Close()
 
-	var message string
-	err := GetInterface(server.URL(), "foo-addr", &message)
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on GetInterface()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	if string(message) != "foo" {
-		t.Fatalf(`Expected body == 'foo', Actual body == '%s'`, string(message))
+	var got string
+	if err := GetInterface(u, "foo-addr", &got); err != nil {
+		t.Fatalf("error on GetInterface(): %s", err)
+	}
+
+	if got != expected {
+		t.Fatalf("Expected body == %q, Actual body == %q", expected, got)
 	}
 }

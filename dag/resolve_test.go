@@ -1,44 +1,61 @@
 package dag
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+)
 
 func TestResolve(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/dag/resolve?arg=foo-addr", `{"Cid": {"/": "foo-addr"}}`)
+	for name, tc := range map[string]struct {
+		f      func(http.ResponseWriter, *http.Request)
+		expect string
+		noErr  bool
+	}{
+		"happy path": {
+			expect: "foo-addr",
+			noErr:  true,
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"Cid":{"/":"foo-addr"}}`))
+			},
+		},
+		"404": {
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		},
+		"invalid json response": {
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`this is not valid JSON`))
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := "http://notexist.example"
+			if tc.f != nil {
+				ts := httptest.NewServer(http.HandlerFunc(tc.f))
+				defer ts.Close()
+				server = ts.URL
+			}
 
-	addr, err := Resolve(server.URL(), "foo-addr")
-	if err != nil {
-		t.Fatal("Error on Resolve()", err.Error())
-	}
+			u, err := url.Parse(server)
+			if err != nil {
+				t.Fatalf("error on url.Parse(): %s", err)
+			}
 
-	if addr != "foo-addr" {
-		t.Fatalf(`Expected addr == "foo-addr", Actual addr == "%v"`, addr)
-	}
-}
+			addr, err := Resolve(u, tc.expect)
+			if err == nil && !tc.noErr {
+				t.Error("expected an error, but got nil")
+			}
 
-func TestResolve404(t *testing.T) {
-	server.Reset()
+			if err != nil && tc.noErr {
+				t.Errorf("error on Resolve(): %s", err)
+			}
 
-	addr, err := Resolve(server.URL(), "foo-addr")
-	if err == nil {
-		t.Fatal("Expected error on Resolve, got nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected addr == "", Actual addr == "%v"`, addr)
-	}
-}
-
-func TestResolveInvalidJSON(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/dag/resolve?arg=foo-addr", `{"Cid"`)
-
-	addr, err := Resolve(server.URL(), "foo-addr")
-	if err == nil {
-		t.Fatal("Expected error on Resolve, got nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected addr == "", Actual addr == "%v"`, addr)
+			if addr != tc.expect {
+				t.Errorf(`expected addr to be %q, but got %q`, tc.expect, addr)
+			}
+		})
 	}
 }

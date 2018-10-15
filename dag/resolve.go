@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 
-	"github.com/computes/ipfs-http-api/http"
+	"github.com/pkg/errors"
 )
 
 // Resolve resolves a ipld reference in IPFS
@@ -17,11 +17,15 @@ func Resolve(ipfsURL *url.URL, address string) (string, error) {
 	dagResolveURL.RawQuery = query.Encode()
 
 	debug("Resolve %v", dagResolveURL.String())
-	reader, err := http.Get(dagResolveURL.String())
+	res, err := DefaultClient.Get(dagResolveURL.String())
 	if err != nil {
 		return "", err
 	}
-	defer reader.Close()
+	defer res.Body.Close()
+
+	if res.StatusCode/100 != 2 {
+		return "", errors.Errorf("unsuccessful response: %s", res.Status)
+	}
 
 	resolveResponse := struct {
 		Cid struct {
@@ -29,9 +33,7 @@ func Resolve(ipfsURL *url.URL, address string) (string, error) {
 		}
 	}{}
 
-	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(&resolveResponse)
-	if err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&resolveResponse); err != nil {
 		return "", err
 	}
 

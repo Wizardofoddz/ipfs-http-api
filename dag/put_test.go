@@ -3,6 +3,9 @@ package dag
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 )
@@ -13,74 +16,67 @@ func (e *ErrorReader) Read(p []byte) (int, error) {
 	return 0, fmt.Errorf("I only error")
 }
 
+var _ io.Reader = &ErrorReader{}
+
 func TestPut(t *testing.T) {
-	server.Reset()
-	server.SetPOSTResponseBody(`/api/v0/dag/put? "foo"`, `{"Cid": {"/": "foo-addr"}}`)
+	for name, tc := range map[string]struct {
+		r      io.Reader
+		f      func(http.ResponseWriter, *http.Request)
+		expect string
+		noErr  bool
+	}{
+		"happy path": {
+			expect: "foo-addr",
+			noErr:  true,
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"Cid":{"/":"foo-addr"}}`))
+			},
+		},
+		"invalid json response": {
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`this is not valid JSON`))
+			},
+		},
+		"invalid request reader": {
+			r: &ErrorReader{},
+		},
+		"no server": {},
+		"404": {
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := "http://notexist.example"
+			if tc.f != nil {
+				ts := httptest.NewServer(http.HandlerFunc(tc.f))
+				defer ts.Close()
+				server = ts.URL
+			}
 
-	addr, err := Put(server.URL(), bytes.NewBuffer([]byte(`"foo"`)))
-	if err != nil {
-		t.Fatal("Error on Put()", err.Error())
+			u, err := url.Parse(server)
+			if err != nil {
+				t.Fatalf("error on url.Parse(): %s", err)
+			}
+
+			if tc.r == nil {
+				tc.r = bytes.NewBuffer([]byte(`"foo"`))
+			}
+
+			addr, err := Put(u, tc.r)
+			if err == nil && !tc.noErr {
+				t.Error("expected an error, but got nil")
+			}
+
+			if err != nil && tc.noErr {
+				t.Errorf("error on Put(): %s", err)
+			}
+
+			if addr != tc.expect {
+				t.Errorf(`expected addr to be %q, but got %q`, tc.expect, addr)
+			}
+		})
 	}
 
-	if addr != "foo-addr" {
-		t.Fatalf(`Expected addr == "foo-addr", Actual addr == "%s"`, addr)
-	}
-}
-
-func TestPutInvalidJSONResponse(t *testing.T) {
-	server.Reset()
-	server.SetPOSTResponseBody(`/api/v0/dag/put? "foo"`, `{"Ci`)
-
-	addr, err := Put(server.URL(), bytes.NewBuffer([]byte(`"foo"`)))
-	if err == nil {
-		t.Fatal("Expected err on Put(), received nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected empty addr, Actual addr == "%s"`, addr)
-	}
-}
-
-func TestPutInvalidReader(t *testing.T) {
-	server.Reset()
-
-	addr, err := Put(server.URL(), &ErrorReader{})
-	if err == nil {
-		t.Fatal("Expected err on Put(), received nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected empty addr, Actual addr == "%s"`, addr)
-	}
-}
-
-func TestPutNoServer(t *testing.T) {
-	server.Reset()
-
-	ipfsURL, err := url.Parse("http://notexist.example")
-	if err != nil {
-		t.Fatal("Error on url.Parse", err.Error())
-	}
-
-	addr, err := Put(ipfsURL, bytes.NewBuffer([]byte(`"foo"`)))
-	if err == nil {
-		t.Fatal("Expected err on Put(), received nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected empty addr, Actual addr == "%s"`, addr)
-	}
-}
-
-func TestPut404(t *testing.T) {
-	server.Reset()
-
-	addr, err := Put(server.URL(), bytes.NewBuffer([]byte(`"foo"`)))
-	if err == nil {
-		t.Fatal("Expected err on Put(), received nil")
-	}
-
-	if addr != "" {
-		t.Fatalf(`Expected empty addr, Actual addr == "%s"`, addr)
-	}
 }

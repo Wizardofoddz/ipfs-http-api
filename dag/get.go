@@ -3,12 +3,15 @@ package dag
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/url"
 
 	"github.com/pkg/errors"
-
-	"github.com/computes/ipfs-http-api/http"
 )
+
+// DefaultClient is the default net/http.Client that this package will use when
+// making HTTP requests
+var DefaultClient = http.DefaultClient
 
 // Get retrieves a dag object from IPFS
 func Get(ipfsURL *url.URL, address string) (io.ReadCloser, error) {
@@ -20,11 +23,15 @@ func Get(ipfsURL *url.URL, address string) (io.ReadCloser, error) {
 	dagGetURL.RawQuery = query.Encode()
 
 	debug("Get %v", dagGetURL.String())
-	res, err := http.Get(dagGetURL.String())
+	res, err := DefaultClient.Get(dagGetURL.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "Get failed")
 	}
-	return res, nil
+	if res.StatusCode/100 != 2 {
+		res.Body.Close()
+		return nil, errors.Errorf("unsuccessful response: %s", res.Status)
+	}
+	return res.Body, nil
 }
 
 // GetBytes retrieves a dag object from IPFS and reads the whole buffer
@@ -55,9 +62,6 @@ func GetInterface(ipfsURL *url.URL, address string, t interface{}) error {
 	if err != nil {
 		return errors.Wrap(err, "DAG.Getbytes failed")
 	}
-	err = json.Unmarshal(buf, &t)
-	if err != nil {
-		return errors.Wrap(err, "json.Unmarshal failed")
-	}
-	return nil
+
+	return json.Unmarshal(buf, t)
 }
