@@ -2,27 +2,38 @@ package key
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
 func TestGen(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/key/gen?arg=foo&type=ed25519", `{"Name": "foo", "Id": "id"}`)
+	type ret struct{ Name, ID string }
+	expected := ret{Name: "foo", ID: "bar"}
 
-	reader, err := Gen(server.URL(), "foo")
-	if err != nil {
-		t.Fatal("Error on Gen()", err.Error())
-	}
-	defer reader.Close()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(expected)
+	}))
+	defer ts.Close()
 
-	message := json.RawMessage{}
-	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(&message)
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on decoder.Decode()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	if string(message) != `{"Name": "foo", "Id": "id"}` {
-		t.Fatalf(`Expected body == '{"Name": "foo", "Id": "id"}', Actual body == '%s'`, string(message))
+	r, err := Gen(u, "foo")
+	if err != nil {
+		t.Fatalf("error on Gen(): %s", err)
+	}
+	defer r.Close()
+
+	var got ret
+	if err := json.NewDecoder(r).Decode(&got); err != nil {
+		t.Fatalf("error on decoder.Decode(): %s", err)
+	}
+
+	if got != expected {
+		t.Fatalf("Expected %v, but got %v", expected, got)
 	}
 }
