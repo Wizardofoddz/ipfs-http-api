@@ -3,12 +3,15 @@ package ipfs
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/url"
 
 	"github.com/pkg/errors"
-
-	"github.com/computes/ipfs-http-api/http"
 )
+
+// DefaultClient is the default net/http.Client that this package will use when
+// making HTTP requests
+var DefaultClient = http.DefaultClient
 
 // ID returns a reader of the IPFS node info
 func ID(ipfsURL *url.URL) (io.ReadCloser, error) {
@@ -16,12 +19,17 @@ func ID(ipfsURL *url.URL) (io.ReadCloser, error) {
 	idURL.Path = "/api/v0/id"
 
 	debug("ID %v", idURL.String())
-	res, err := http.Get(idURL.String())
+	res, err := DefaultClient.Get(idURL.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "http.Get failed")
 	}
 
-	return res, nil
+	if res.StatusCode/100 != 2 {
+		res.Body.Close()
+		return nil, errors.Errorf("unsuccessful response: %s", res.Status)
+	}
+
+	return res.Body, nil
 }
 
 // IDBytes returns the IPFS node info as bytes
