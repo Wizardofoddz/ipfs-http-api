@@ -2,26 +2,36 @@ package swarm
 
 import (
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
 func TestPeers(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/swarm/peers?", "foo")
+	expected := `"foo"`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(expected))
+	}))
+	defer ts.Close()
 
-	reader, err := Peers(server.URL())
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on Peers()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	defer reader.Close()
-
-	body, err := ioutil.ReadAll(reader)
+	r, err := Peers(u)
 	if err != nil {
-		t.Fatal("Error on ioutil.ReadAll()", err.Error())
+		t.Fatalf("error on Peers(): %s", err)
+	}
+	defer r.Close()
+
+	body, err := ioutil.ReadAll(r)
+	if err != nil {
+		t.Fatalf("error on ioutil.ReadAll(): %s", err)
 	}
 
-	if string(body) != "foo" {
-		t.Fatalf(`Expected body == "foo", Actual body == "%s"`, body)
+	if string(body) != expected {
+		t.Fatalf("Expected body == %s, Actual body == %q", expected, body)
 	}
 }
