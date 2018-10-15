@@ -26,19 +26,14 @@ func ID(ipfsURL *url.URL) (io.ReadCloser, error) {
 
 // IDBytes returns the IPFS node info as bytes
 func IDBytes(ipfsURL *url.URL) ([]byte, error) {
-	reader, err := ID(ipfsURL)
-
-	if reader != nil {
-		defer reader.Close()
-	}
+	r, err := ID(ipfsURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "IDBytes failed")
 	}
+	defer r.Close()
 
-	message := json.RawMessage{}
-	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(&message)
-	if err != nil {
+	var message json.RawMessage
+	if err := json.NewDecoder(r).Decode(&message); err != nil {
 		return nil, errors.Wrap(err, "json.Decode failed")
 	}
 
