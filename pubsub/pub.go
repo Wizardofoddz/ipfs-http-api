@@ -1,14 +1,15 @@
 package pubsub
 
 import (
-	"io"
-	"io/ioutil"
+	"net/http"
 	"net/url"
 
 	"github.com/pkg/errors"
-
-	"github.com/computes/ipfs-http-api/http"
 )
+
+// DefaultClient is the default net/http.Client that this package will use when
+// making HTTP requests
+var DefaultClient = http.DefaultClient
 
 // Publish will publish the content to a given URL
 func Publish(ipfsURL *url.URL, topic, payload string) error {
@@ -21,11 +22,15 @@ func Publish(ipfsURL *url.URL, topic, payload string) error {
 	pubURL.RawQuery = query.Encode()
 
 	debug("Publish %v", pubURL.String())
-	reader, err := http.Get(pubURL.String())
+	res, err := DefaultClient.Get(pubURL.String())
 	if err != nil {
 		return errors.Wrap(err, "http.Get failed")
 	}
-	io.Copy(ioutil.Discard, reader)
-	defer reader.Close()
+	defer res.Body.Close()
+
+	if res.StatusCode/100 != 2 {
+		return errors.Errorf("unsuccessful response: %s", res.Status)
+	}
+
 	return nil
 }
