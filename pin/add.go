@@ -1,14 +1,15 @@
 package pin
 
 import (
-	"io"
-	"io/ioutil"
+	"net/http"
 	"net/url"
 
 	"github.com/pkg/errors"
-
-	"github.com/computes/ipfs-http-api/http"
 )
+
+// DefaultClient is the default net/http.Client that this package will use when
+// making HTTP requests
+var DefaultClient = http.DefaultClient
 
 // Add pins a an IPFS object recursively
 func Add(ipfsURL *url.URL, address string) error {
@@ -20,11 +21,15 @@ func Add(ipfsURL *url.URL, address string) error {
 	pinAddURL.RawQuery = query.Encode()
 
 	debug("Add %v", pinAddURL.String())
-	resp, err := http.Get(pinAddURL.String())
+	resp, err := DefaultClient.Get(pinAddURL.String())
 	if err != nil {
 		return errors.Wrap(err, "http.Get failed")
 	}
-	io.Copy(ioutil.Discard, resp)
-	defer resp.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		return errors.Errorf("unsuccessful response: %s", resp.Status)
+	}
+
 	return nil
 }
