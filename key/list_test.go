@@ -2,27 +2,37 @@ package key
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
 func TestList(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/key/list?", `{"Keys": []}`)
+	expected := `{"Keys":[]}`
 
-	reader, err := List(server.URL())
-	if err != nil {
-		t.Fatal("Error on List()", err.Error())
-	}
-	defer reader.Close()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(expected))
+	}))
+	defer ts.Close()
 
-	message := json.RawMessage{}
-	decoder := json.NewDecoder(reader)
-	err = decoder.Decode(&message)
+	u, err := url.Parse(ts.URL)
 	if err != nil {
-		t.Fatal("Error on decoder.Decode()", err.Error())
+		t.Fatalf("error on url.Parse(): %s", err)
 	}
 
-	if string(message) != `{"Keys": []}` {
-		t.Fatalf(`Expected body == '{"Keys": []}', Actual body == '%s'`, string(message))
+	r, err := List(u)
+	if err != nil {
+		t.Fatalf("error on List(): %s", err)
+	}
+	defer r.Close()
+
+	var message json.RawMessage
+	if err := json.NewDecoder(r).Decode(&message); err != nil {
+		t.Fatalf("error on decoder.Decode(): %s", err)
+	}
+
+	if got := string(message); got != expected {
+		t.Fatalf("Expected %s, but got %s", expected, got)
 	}
 }

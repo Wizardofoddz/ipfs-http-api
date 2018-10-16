@@ -5,8 +5,6 @@ import (
 	"net/url"
 
 	"github.com/pkg/errors"
-
-	"github.com/computes/ipfs-http-api/http"
 )
 
 // List will return a list of existing keys
@@ -18,10 +16,15 @@ func List(ipfsURL *url.URL) (io.ReadCloser, error) {
 	keyListURL.RawQuery = query.Encode()
 
 	debug("Get %v", keyListURL.String())
-	res, err := http.Get(keyListURL.String())
+	res, err := DefaultClient.Get(keyListURL.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "http.Get failed")
 	}
 
-	return res, nil
+	if res.StatusCode/100 != 2 {
+		res.Body.Close()
+		return nil, errors.Errorf("unsuccessful response: %s", res.Status)
+	}
+
+	return res.Body, nil
 }

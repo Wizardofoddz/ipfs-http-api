@@ -1,27 +1,41 @@
 package pin
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+)
 
 func TestAdd(t *testing.T) {
-	server.Reset()
-	server.SetGETResponseBody("/api/v0/pin/add?arg=foo-addr", "")
+	for name, tc := range map[string]struct {
+		f     func(http.ResponseWriter, *http.Request)
+		noErr bool
+	}{
+		"happy path": {
+			noErr: true,
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			},
+		},
+		"404": {
+			f: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(tc.f))
+			u, _ := url.Parse(ts.URL)
 
-	err := Add(server.URL(), "foo-addr")
-	if err != nil {
-		t.Fatal("Error on Add()", err.Error())
-	}
+			err := Add(u, "foo-addr")
+			if tc.noErr && err != nil {
+				t.Errorf("unexpected error on Add(): %s", err)
+			}
+			if !tc.noErr && err == nil {
+				t.Error("expected an error, but got none")
+			}
+		})
 
-	requests := server.GetGETRequests("/api/v0/pin/add?arg=foo-addr")
-	if len(requests) != 1 {
-		t.Fatalf("Expected len(requests) == 1, Actual len(requests) == %v", len(requests))
-	}
-}
-
-func TestAdd404(t *testing.T) {
-	server.Reset()
-
-	err := Add(server.URL(), "foo-addr")
-	if err == nil {
-		t.Fatal("Expected Add() to return an error, received nil")
 	}
 }
